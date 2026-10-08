@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Project Maya - set up and start GLM-5.3-Flash on your own GPU(s).
-CUDA: Linux; Windows (experimental). HIP: experimental Linux gfx1100/gfx1201, text only.
+CUDA: Linux; Windows (experimental). HIP: experimental Linux gfx1100/gfx1201/gfx1150, text only.
 
     ./maya.sh                 the first run sets everything up and starts the dashboard; later runs just start it
     ./maya.sh --setup         set up again (other GPUs, another context length, another model folder)
@@ -14,7 +14,7 @@ pip, llama.cpp's source and resumable downloads.
 What the first run does (each step is skipped when it is already done):
 
   1. checks the PC: NVIDIA GPU(s) of compute capability 7.0+, driver, CUDA toolkit (nvcc), the C++ compiler (g++;
-     on Windows Visual Studio 2022's Build Tools), CMake, RAM, CPU; HIP checks AMD gfx1100/gfx1201 and ROCm 7 instead
+     on Windows Visual Studio 2022's Build Tools), CMake, RAM, CPU; HIP checks AMD gfx1100/gfx1201/gfx1150 and ROCm 7 instead
   2. asks: which GPUs (one, or several that split the layers), how much context, which model to download (Maya-S,
      Maya-M or GSQ-RCO 3.5-bit)
   3. Python packages into .venv, llama.cpp's source at the pinned commit (it lists them and asks first)
@@ -237,7 +237,8 @@ def check_hip_pc(a) -> dict:
     for g in found:
         say(f"    {gpu_label(g)} - " + ("can be used" if g in usable else "not supported by Maya's HIP build"))
     if not usable:
-        fail("no supported AMD GPU found", "this port targets RX 7900 XT / XTX (gfx1100) and RX 9070 / AI PRO R9700 (gfx1201)")
+        fail("no supported AMD GPU found", "this port targets RX 7900 XT / XTX (gfx1100), RX 9070 / AI PRO R9700 (gfx1201) and, experimentally, "
+             "the Ryzen AI 300 Radeon 890M / 880M (gfx1150, docs/STRIX_POINT.md)")
     if a.gpus:
         # two cards split the layers (each caches the experts of its own half); the larger card goes first, as it
         # takes the bigger first half - the order measured on an R9700 + RX 7900 XT
@@ -274,7 +275,7 @@ def check_hip_pc(a) -> dict:
     ok(f"ROCm: {root}; CPU: {cpu} ({'AVX-512' if avx512 else 'AVX2'})")
     ok(f"RAM: {total:.0f} GB, {avail:.0f} GB available now")
     select_build_backend("hip")
-    return {"backend": "hip", "gpus": chosen, "archs": ["gfx1100", "gfx1201", "gfx1151"], "rocm": str(root)}
+    return {"backend": "hip", "gpus": chosen, "archs": ["gfx1100", "gfx1201", "gfx1151", "gfx1150"], "rocm": str(root)}
 
 
 def nvcc_range(archs) -> tuple:
@@ -1583,7 +1584,7 @@ def bench(cfg_path: Path, version: str) -> int:
 # ------------------------------------------------------------------------------------------------ main
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--backend", choices=["cuda", "hip"], help="GPU backend (HIP: experimental gfx1100/gfx1201 on Linux)")
+    ap.add_argument("--backend", choices=["cuda", "hip"], help="GPU backend (HIP: experimental gfx1100/gfx1201/gfx1150 on Linux)")
     ap.add_argument("--setup", action="store_true", help="set up again instead of starting the installed model")
     ap.add_argument("--check", action="store_true", help="only check this PC and exit")
     ap.add_argument("--no-start", action="store_true", help="set up, but do not start the dashboard")

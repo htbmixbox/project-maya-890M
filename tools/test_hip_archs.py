@@ -29,6 +29,12 @@ class HipArchitectureTests(unittest.TestCase):
         self.assertIn("compiler=gfx1100;gfx1201;gfx1151;runtime=gfx1100,gfx1201,gfx1151", r.stdout)
         self.assertIn("not validated", r.stderr)
 
+    def test_strix_point_builds_with_a_warning(self):
+        r = self.probe("gfx1150")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("compiler=gfx1150;runtime=gfx1150", r.stdout)
+        self.assertIn("not validated", r.stderr)
+
     def test_spaces_suffixes_and_duplicates(self):
         r = self.probe("gfx1100:xnack-  gfx1201;gfx1201;gfx1151")
         self.assertEqual(r.returncode, 0, r.stderr)

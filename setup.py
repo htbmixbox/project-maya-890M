@@ -698,19 +698,21 @@ def cuda_lib_dirs():
 
 
 # ------------------------------------------------------------------------------------------------ AMD (experimental)
-# The RX 7900 XT / XTX (gfx1100) and RX 9070 / R9700 (gfx1201) on Linux, through the HIP backend (docs/AMD_HIP.md).  There is no ready-made AMD
+# The RX 7900 XT / XTX (gfx1100) and RX 9070 / R9700 (gfx1201) on Linux, through the HIP backend (docs/AMD_HIP.md), and the Ryzen AI 300
+# "Strix Point" iGPU (Radeon 890M / 880M, gfx1150: experimental, docs/STRIX_POINT.md).  There is no ready-made AMD
 # engine: ROCm comes from AMD's TheRock Python wheels into .venv (no sudo; a system ROCm in /opt/rocm is used when it
 # has hipcc and hipBLAS) and the engine is compiled here.  One GPU, no images yet.
 ROCM_INDEX = os.environ.get("STRATA_ROCM_INDEX", "https://rocm.nightlies.amd.com/v2/gfx110X-dgpu/")
 ROCM_VERSION = os.environ.get("STRATA_ROCM_VERSION", "7.10.0a20251120")   # what Strata's HIP build was tested with
-AMD_ARCHS = ("gfx1100", "gfx1201")
+AMD_ARCHS = ("gfx1100", "gfx1201", "gfx1150")
 AMD_NAMES = {"gfx1100": "AMD Radeon RX 7900 series (gfx1100)",
-             "gfx1201": "AMD Radeon RX 9070 / AI PRO R9700 (gfx1201)"}   # when sysfs has no product name
+             "gfx1201": "AMD Radeon RX 9070 / AI PRO R9700 (gfx1201)",
+             "gfx1150": "AMD Radeon 890M / 880M (Ryzen AI 300, Strix Point, gfx1150)"}   # when sysfs has no product name
 
 
 def amd_gpus():
     """AMD GPUs from the kernel's KFD topology (the amdgpu driver; no ROCm needed), numbered as HIP numbers them:
-    the GPU nodes in order, the CPU nodes skipped.  Integrated GPUs are listed too (not supported)."""
+    the GPU nodes in order, the CPU nodes skipped.  Integrated GPUs are listed too (of them only Strix Point, gfx1150, is supported)."""
     base = Path("/sys/class/kfd/kfd/topology/nodes")
     found = []
     if WIN or not base.is_dir():
@@ -1691,7 +1693,7 @@ def main() -> int:
             say(f"    GPU {g['index']}: {g['name']}, {g['vram_gb']:.0f} GB VRAM - " + (amd_problem(g) or "can be used"))
         usable = [g for g in amd if amd_problem(g) is None]
         if not usable:
-            fail("no AMD GPU Strata can use", "the Maya AMD backend targets gfx1100/gfx1201 on Linux with system ROCm 7")
+            fail("no AMD GPU Strata can use", "the Maya AMD backend targets gfx1100/gfx1201 (and the experimental Strix Point gfx1150) on Linux with system ROCm 7")
         if a.gpus:
             fail("several GPUs sharing one model: NVIDIA only for now", "use one AMD card (--gpu N)")
         if a.gpu is not None:

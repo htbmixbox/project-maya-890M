@@ -53,6 +53,16 @@ class HipSetupTests(unittest.TestCase):
         self.assertEqual(pc["gpus"], [self.gpus[1]])
         self.assertEqual(maya.EXE, self.root / "build-hip/strata")
 
+    def test_strix_point_igpu_is_accepted_experimentally(self):
+        self.gpus.append({"index": 3, "arch": "gfx1150", "vendor": "amd", "name": "Radeon 890M", "vram_gb": 0.5})
+        self.assertIn("gfx1150", maya.S.AMD_ARCHS)
+        self.assertIsNone(maya.S.amd_problem(self.gpus[3]))
+        self.assertIsNotNone(maya.S.amd_problem(self.gpus[2]))      # gfx1036 and other iGPUs stay unsupported
+        self.a.gpu = 3
+        pc = maya.check_pc(self.a)
+        self.assertEqual(pc["gpus"], [self.gpus[3]])
+        self.assertIn("gfx1150", pc["archs"])
+
     def test_rejects_unsupported_card_and_bad_gpu_lists(self):
         self.a.gpu = 2
         with self.assertRaises(SystemExit):
@@ -118,7 +128,7 @@ class HipSetupTests(unittest.TestCase):
         self.assertIn("-DSTRATA_ENABLE_HIP=ON", conf)
         self.assertIn("-DSTRATA_ENABLE_CUDA=OFF", conf)
         self.assertIn("-DSTRATA_PREFILL_MMQ=ON", conf)
-        self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx1100;gfx1201;gfx1151", conf)
+        self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx1100;gfx1201;gfx1151;gfx1150", conf)
         self.assertEqual(env["ROCM_PATH"], str(self.rocm))
         self.assertEqual(meta["backend"], "hip")
 

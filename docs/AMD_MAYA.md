@@ -20,9 +20,11 @@ The first setup downloads about 96.5 GB of weights and verifies the SHA-256
 hash of each shard. `--gguf-dir DIR` uses existing files instead. GPU numbers
 are the kernel KFD topology order shown by `--check`; on the test machine the
 7900 XT is GPU 0, an R9700 is GPU 1, and the integrated GPU is GPU 2. This
-installer accepts `gfx1100` and `gfx1201` and compiles one binary for
-`gfx1100;gfx1201;gfx1151`. The last target **builds, untested**: it is not
-enabled by setup until the separate unified-memory work is validated.
+installer accepts `gfx1100` and `gfx1201`, and experimentally the Ryzen AI 300
+"Strix Point" iGPU `gfx1150` (Radeon 890M / 880M: [STRIX_POINT.md](STRIX_POINT.md)).
+It compiles one binary for `gfx1100;gfx1201;gfx1151;gfx1150`. `gfx1151`
+**builds, untested**: it is not enabled by setup until the separate
+unified-memory work is validated.
 Configs are named `maya-<quant>-hip.json` and
 select the AMD device through `HIP_VISIBLE_DEVICES`.
 

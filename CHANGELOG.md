@@ -3,6 +3,13 @@
 Every release is on GitHub (Releases) with these notes; every published change moves the last number. Update: `git pull`, then `./setup.sh` (Windows:
 `START-MAYA.bat`) - it recompiles only what changed and starts.
 
+## Unreleased
+
+- **Strix Point (Radeon 890M / 880M, gfx1150), experimental:** setup accepts the Ryzen AI 300 iGPU and builds the HIP
+  engine for it (docs/STRIX_POINT.md). Not measured by the maintainers.
+- **Filesystems without O_DIRECT:** `DirectFile` falls back to buffered reads (with a note on stderr) when the
+  filesystem refuses `O_DIRECT` (EINVAL / EOPNOTSUPP) instead of stopping.
+
 ## v1.0.14 - 2026-10-08
 
 Maya runs on two AMD GPUs (experimental), with MTP drafting on the second card, contributed by @boxwrench.
