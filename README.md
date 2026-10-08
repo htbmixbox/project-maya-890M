@@ -1,3 +1,28 @@
+///Optimized for 890M build only :)
+1.added 890M support 
+
+OS Optimizations part(96GB> systems only):
+1.Create SWAP on fastest part of your SSD with the same size as your RAM.
+2.On 96 GB system you have to fine tune your GPU/CPU mem sharing by doing this:
+
+sudo nano /etc/default/grub
+#at the end of the file add:
+#For 32k context it must be 0.3GB more
+GRUB_CMDLINE_LINUX_DEFAULT="quiet ttm.pages_limit=19486528"
+
+#after edit 
+sudo update-grub
+reboot
+
+
+
+You don't want to evict experts to SWAP - it degrades performance by 2 t/s and wears out your SSD. In the long run it's gonna be expensive :) !
+
+Steps from above took me from 3 t/s to 5t/s
+
+
+
+
 <h1 align="center">Project Maya</h1>
 
 <p align="center"><b>Run GLM-5.3-Flash - a 321-billion-parameter AI model - on your own GPU(s)</b><br>
