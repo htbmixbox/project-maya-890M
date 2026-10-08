@@ -1,3 +1,49 @@
+# 🚀 Optimized for 890M Build Only :)
+
+## What's New
+
+* Added **890M support**.
+
+---
+
+# 🛠️ OS Optimizations
+
+> **For systems with 96 GB+ RAM only.**
+
+These optimizations are focused on maximizing GPU/CPU memory sharing and keeping the LLM workload from unnecessarily falling back to SWAP.
+
+## 1. Create SWAP
+
+Create a **SWAP file/partition on the fastest part of your SSD**.
+
+As a general rule, make the SWAP size approximately **the same size as your system RAM**.
+
+> ⚠️ Make sure the SSD has sufficient free space before doing this.
+
+---
+
+## 2. Fine-Tune GPU / CPU Memory Sharing
+
+On a **96 GB RAM system**, you can tune the Linux **TTM memory limit** to control how much memory can be used for GPU memory management.
+
+Edit GRUB:
+
+```bash
+sudo nano /etc/default/grub
+```
+
+At the end of the file, adjust:
+
+|  TTM Limit |          Pages | Recommendation               |
+| ---------: | -------------: | ---------------------------- |
+|     72 GiB |     18,874,368 | Conservative                 |
+| **80 GiB** | **20,971,520** | ⭐ Recommended starting point |
+|     86 GiB |     22,544,384 | Very Aggressive                   |
+
+
+
+
+
 <h1 align="center">Project Maya</h1>
 
 <p align="center"><b>Run GLM-5.3-Flash - a 321-billion-parameter AI model - on your own GPU(s)</b><br>

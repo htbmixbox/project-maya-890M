@@ -1,0 +1,282 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 643225d..e08a076 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -3,6 +3,13 @@
+ Every release is on GitHub (Releases) with these notes; every published change moves the last number. Update: `git pull`, then `./setup.sh` (Windows:
+ `START-MAYA.bat`) - it recompiles only what changed and starts.
+ 
++## Unreleased
++
++- **Strix Point (Radeon 890M / 880M, gfx1150), experimental:** setup accepts the Ryzen AI 300 iGPU and builds the HIP
++  engine for it (docs/STRIX_POINT.md). Not measured by the maintainers.
++- **Filesystems without O_DIRECT:** `DirectFile` falls back to buffered reads (with a note on stderr) when the
++  filesystem refuses `O_DIRECT` (EINVAL / EOPNOTSUPP) instead of stopping.
++
+ ## v1.0.14 - 2026-10-08
+ 
+ Maya runs on two AMD GPUs (experimental), with MTP drafting on the second card, contributed by @boxwrench.
+diff --git a/cmake/hip_backend.cmake b/cmake/hip_backend.cmake
+index 896b621..541b0c9 100644
+--- a/cmake/hip_backend.cmake
++++ b/cmake/hip_backend.cmake
+@@ -10,7 +10,9 @@ endif()
+ # same LDS limit and dot4 instruction and passed ctest (#192), but no model run has been reported yet. RDNA2 gfx1030 (RX 6800 / 6900) has the
+ # same LDS limit and wave32 but an older dot4 instruction (v_dot4_i32_i8, hip_compat/intrinsics.hpp); a community
+ # report ran it (#311), the maintainers have not. gfx1151 (Ryzen AI Max / Strix Halo, Radeon 8060S, RDNA3.5) is the
+-# same wave32 / 64 KiB LDS / sudot4 family as gfx1100, on a unified-memory APU; experimental.
++# same wave32 / 64 KiB LDS / sudot4 family as gfx1100, on a unified-memory APU; experimental. gfx1150 (Ryzen AI 300 /
++# Strix Point, Radeon 890M / 880M, RDNA3.5) is the same family on a smaller APU with a smaller vector register file;
++# experimental, no maintainer card has run it (docs/STRIX_POINT.md).
+ set(_strata_hip_validated gfx1100 gfx1201)
+ set(_strata_hip_community gfx1101 gfx1200)
+ set(_strata_hip_unvalidated gfx1010 gfx1011 gfx1012 gfx1102 gfx1103 gfx1030 gfx1031 gfx1034 gfx1150 gfx1151)   # gfx1103: Radeon 780M iGPU, opt-in, portable kernels (no WMMA)
+diff --git a/docs/AMD_MAYA.md b/docs/AMD_MAYA.md
+index dd79e8f..e9b6690 100644
+--- a/docs/AMD_MAYA.md
++++ b/docs/AMD_MAYA.md
+@@ -20,9 +20,11 @@ The first setup downloads about 96.5 GB of weights and verifies the SHA-256
+ hash of each shard. `--gguf-dir DIR` uses existing files instead. GPU numbers
+ are the kernel KFD topology order shown by `--check`; on the test machine the
+ 7900 XT is GPU 0, an R9700 is GPU 1, and the integrated GPU is GPU 2. This
+-installer accepts `gfx1100` and `gfx1201` and compiles one binary for
+-`gfx1100;gfx1201;gfx1151`. The last target **builds, untested**: it is not
+-enabled by setup until the separate unified-memory work is validated.
++installer accepts `gfx1100` and `gfx1201`, and experimentally the Ryzen AI 300
++"Strix Point" iGPU `gfx1150` (Radeon 890M / 880M: [STRIX_POINT.md](STRIX_POINT.md)).
++It compiles one binary for `gfx1100;gfx1201;gfx1151;gfx1150`. `gfx1151`
++**builds, untested**: it is not enabled by setup until the separate
++unified-memory work is validated.
+ Configs are named `maya-<quant>-hip.json` and
+ select the AMD device through `HIP_VISIBLE_DEVICES`.
+ 
+diff --git a/docs/STRIX_POINT.md b/docs/STRIX_POINT.md
+new file mode 100644
+index 0000000..01a230b
+--- /dev/null
++++ b/docs/STRIX_POINT.md
+@@ -0,0 +1,47 @@
++# Strix Point (Ryzen AI 300, Radeon 890M / 880M, gfx1150): experimental
++
++Maya's setup and HIP build accept the Ryzen AI 300 "Strix Point" APUs (Radeon 890M / 880M, RDNA3.5, `gfx1150`) as an
++**experimental** target. Nobody on the Maya side has measured it on a real chip: this page records what was changed
++and what is still a guess. Please report what you see (last section).
++
++Strix Point is a small sibling of Strix Halo: the same RDNA3.5 wave32 / 64 KiB LDS / signed-dot4 family, one pool of
++system memory shared by the CPU and the GPU, a 16-CU iGPU.
++
++## What setup and the build do for it
++
++- **Detection:** `./setup.sh --check` lists the iGPU from the kernel's KFD topology as `gfx1150` and accepts it
++  (`AMD_ARCHS` in `setup.py`); other integrated Radeons (gfx1152 Krackan, gfx1103 Phoenix, gfx1036) stay unsupported.
++- **Build:** `maya.py` compiles one binary for `gfx1100;gfx1201;gfx1151;gfx1150`. `gfx1150` is in the "unvalidated" list
++  of `cmake/hip_backend.cmake`, so CMake builds it with a warning. The HIP intrinsics already cover `__gfx1150__`
++  (`include/strata/hip_compat/intrinsics.hpp`).
++- **What it does NOT get:** no hipBLASLt tuning table exists for gfx1150 (`tools/hip/` has gfx1100 / gfx1151 / gfx1201),
++  so the prompt's dense products use plain hipBLAS. Setup also has no unified-memory sizing for it: the GPU's "VRAM" it
++  reports is only the BIOS carve-out, and the HIP config keeps its discrete-card defaults
++  (`STRATA_GLM_RESERVE_MB=3072`, `STRATA_GLM_RAM_HEADROOM_GB=16`). Change them with `--env KEY=VALUE` if the engine
++  starts too little or too much cache.
++
++## Build by hand (Linux)
++
++```sh
++cmake -S . -B build-hip -G Ninja -DCMAKE_BUILD_TYPE=Release \
++  -DSTRATA_ENABLE_HIP=ON -DSTRATA_ENABLE_CUDA=OFF -DSTRATA_PREFILL_MMQ=ON \
++  -DCMAKE_HIP_ARCHITECTURES=gfx1150
++cmake --build build-hip --target strata -j 8
++```
++
++You need ROCm 7 (system `/opt/rocm` with hipcc and hipBLAS, or `ROCM_PATH`) whose compiler supports `gfx1150`.
++
++## What to expect, and the open questions
++
++- **Speed:** the 890M shares the system memory's bandwidth with the CPU and has 16 CUs; expect far lower numbers than
++  the discrete cards. No measurement exists here.
++- **Registers:** the 890M is reported to have a smaller vector register file per SIMD than gfx1151, so kernels tuned
++  for other cards may spill or run fewer blocks per CU. That costs speed, not correctness, and is unmeasured.
++- **Memory:** RAM decides the model. Give the GPU room with a small BIOS carve-out and, if needed, the kernel's
++  `ttm.pages_limit` / `ttm.page_pool_size`; setup changes no host setting.
++- **Windows:** the HIP backend is Linux only.
++
++## Reports
++
++The machine (CPU, RAM, BIOS carve-out), the kernel and ROCm versions, the model, the engine log and the output of
++`./setup.sh --check`.
+diff --git a/maya.py b/maya.py
+index 619a2f5..122b7d6 100755
+--- a/maya.py
++++ b/maya.py
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env python3
+ """Project Maya - set up and start GLM-5.3-Flash on your own GPU(s).
+-CUDA: Linux; Windows (experimental). HIP: experimental Linux gfx1100/gfx1201, text only.
++CUDA: Linux; Windows (experimental). HIP: experimental Linux gfx1100/gfx1201/gfx1150, text only.
+ 
+     ./maya.sh                 the first run sets everything up and starts the dashboard; later runs just start it
+     ./maya.sh --setup         set up again (other GPUs, another context length, another model folder)
+@@ -14,7 +14,7 @@ pip, llama.cpp's source and resumable downloads.
+ What the first run does (each step is skipped when it is already done):
+ 
+   1. checks the PC: NVIDIA GPU(s) of compute capability 7.0+, driver, CUDA toolkit (nvcc), the C++ compiler (g++;
+-     on Windows Visual Studio 2022's Build Tools), CMake, RAM, CPU; HIP checks AMD gfx1100/gfx1201 and ROCm 7 instead
++     on Windows Visual Studio 2022's Build Tools), CMake, RAM, CPU; HIP checks AMD gfx1100/gfx1201/gfx1150 and ROCm 7 instead
+   2. asks: which GPUs (one, or several that split the layers), how much context, which model to download (Maya-S,
+      Maya-M or GSQ-RCO 3.5-bit)
+   3. Python packages into .venv, llama.cpp's source at the pinned commit (it lists them and asks first)
+@@ -237,7 +237,8 @@ def check_hip_pc(a) -> dict:
+     for g in found:
+         say(f"    {gpu_label(g)} - " + ("can be used" if g in usable else "not supported by Maya's HIP build"))
+     if not usable:
+-        fail("no supported AMD GPU found", "this port targets RX 7900 XT / XTX (gfx1100) and RX 9070 / AI PRO R9700 (gfx1201)")
++        fail("no supported AMD GPU found", "this port targets RX 7900 XT / XTX (gfx1100), RX 9070 / AI PRO R9700 (gfx1201) and, experimentally, "
++             "the Ryzen AI 300 Radeon 890M / 880M (gfx1150, docs/STRIX_POINT.md)")
+     if a.gpus:
+         # two cards split the layers (each caches the experts of its own half); the larger card goes first, as it
+         # takes the bigger first half - the order measured on an R9700 + RX 7900 XT
+@@ -274,7 +275,7 @@ def check_hip_pc(a) -> dict:
+     ok(f"ROCm: {root}; CPU: {cpu} ({'AVX-512' if avx512 else 'AVX2'})")
+     ok(f"RAM: {total:.0f} GB, {avail:.0f} GB available now")
+     select_build_backend("hip")
+-    return {"backend": "hip", "gpus": chosen, "archs": ["gfx1100", "gfx1201", "gfx1151"], "rocm": str(root)}
++    return {"backend": "hip", "gpus": chosen, "archs": ["gfx1100", "gfx1201", "gfx1151", "gfx1150"], "rocm": str(root)}
+ 
+ 
+ def nvcc_range(archs) -> tuple:
+@@ -1583,7 +1584,7 @@ def bench(cfg_path: Path, version: str) -> int:
+ # ------------------------------------------------------------------------------------------------ main
+ def main() -> int:
+     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+-    ap.add_argument("--backend", choices=["cuda", "hip"], help="GPU backend (HIP: experimental gfx1100/gfx1201 on Linux)")
++    ap.add_argument("--backend", choices=["cuda", "hip"], help="GPU backend (HIP: experimental gfx1100/gfx1201/gfx1150 on Linux)")
+     ap.add_argument("--setup", action="store_true", help="set up again instead of starting the installed model")
+     ap.add_argument("--check", action="store_true", help="only check this PC and exit")
+     ap.add_argument("--no-start", action="store_true", help="set up, but do not start the dashboard")
+diff --git a/setup.py b/setup.py
+index 9add2c1..2c5462c 100755
+--- a/setup.py
++++ b/setup.py
+@@ -698,19 +698,21 @@ def cuda_lib_dirs():
+ 
+ 
+ # ------------------------------------------------------------------------------------------------ AMD (experimental)
+-# The RX 7900 XT / XTX (gfx1100) and RX 9070 / R9700 (gfx1201) on Linux, through the HIP backend (docs/AMD_HIP.md).  There is no ready-made AMD
++# The RX 7900 XT / XTX (gfx1100) and RX 9070 / R9700 (gfx1201) on Linux, through the HIP backend (docs/AMD_HIP.md), and the Ryzen AI 300
++# "Strix Point" iGPU (Radeon 890M / 880M, gfx1150: experimental, docs/STRIX_POINT.md).  There is no ready-made AMD
+ # engine: ROCm comes from AMD's TheRock Python wheels into .venv (no sudo; a system ROCm in /opt/rocm is used when it
+ # has hipcc and hipBLAS) and the engine is compiled here.  One GPU, no images yet.
+ ROCM_INDEX = os.environ.get("STRATA_ROCM_INDEX", "https://rocm.nightlies.amd.com/v2/gfx110X-dgpu/")
+ ROCM_VERSION = os.environ.get("STRATA_ROCM_VERSION", "7.10.0a20251120")   # what Strata's HIP build was tested with
+-AMD_ARCHS = ("gfx1100", "gfx1201")
++AMD_ARCHS = ("gfx1100", "gfx1201", "gfx1150")
+ AMD_NAMES = {"gfx1100": "AMD Radeon RX 7900 series (gfx1100)",
+-             "gfx1201": "AMD Radeon RX 9070 / AI PRO R9700 (gfx1201)"}   # when sysfs has no product name
++             "gfx1201": "AMD Radeon RX 9070 / AI PRO R9700 (gfx1201)",
++             "gfx1150": "AMD Radeon 890M / 880M (Ryzen AI 300, Strix Point, gfx1150)"}   # when sysfs has no product name
+ 
+ 
+ def amd_gpus():
+     """AMD GPUs from the kernel's KFD topology (the amdgpu driver; no ROCm needed), numbered as HIP numbers them:
+-    the GPU nodes in order, the CPU nodes skipped.  Integrated GPUs are listed too (not supported)."""
++    the GPU nodes in order, the CPU nodes skipped.  Integrated GPUs are listed too (of them only Strix Point, gfx1150, is supported)."""
+     base = Path("/sys/class/kfd/kfd/topology/nodes")
+     found = []
+     if WIN or not base.is_dir():
+@@ -1691,7 +1693,7 @@ def main() -> int:
+             say(f"    GPU {g['index']}: {g['name']}, {g['vram_gb']:.0f} GB VRAM - " + (amd_problem(g) or "can be used"))
+         usable = [g for g in amd if amd_problem(g) is None]
+         if not usable:
+-            fail("no AMD GPU Strata can use", "the Maya AMD backend targets gfx1100/gfx1201 on Linux with system ROCm 7")
++            fail("no AMD GPU Strata can use", "the Maya AMD backend targets gfx1100/gfx1201 (and the experimental Strix Point gfx1150) on Linux with system ROCm 7")
+         if a.gpus:
+             fail("several GPUs sharing one model: NVIDIA only for now", "use one AMD card (--gpu N)")
+         if a.gpu is not None:
+diff --git a/src/platform/direct_file.cpp b/src/platform/direct_file.cpp
+index cd4f6a7..ea84db6 100644
+--- a/src/platform/direct_file.cpp
++++ b/src/platform/direct_file.cpp
+@@ -4,6 +4,8 @@
+ #include <algorithm>
+ #include <chrono>
+ #include <condition_variable>
++#include <cerrno>
++#include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+ #include <deque>
+@@ -306,7 +308,27 @@ DirectFile::~DirectFile() { close(); delete impl_; }
+ bool DirectFile::open(const std::string& path, std::string& err) {
+     close();
+     impl_->fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
+-    if (impl_->fd < 0) { err = "DirectFile: cannot open " + path; return false; }
++    if (impl_->fd < 0) {
++        const int e = errno;
++        // Some filesystems refuse O_DIRECT (EINVAL / EOPNOTSUPP: an encrypted home, ZFS before 2.3, tmpfs on older
++        // kernels, some FUSE mounts).  Every request here is already aligned, so the same preads work on a buffered
++        // descriptor: slower on a cold read and it fills the page cache, but the engine runs instead of stopping.
++        const bool retried = (e == EINVAL || e == EOPNOTSUPP);
++        if (retried) {
++            impl_->fd = ::open(path.c_str(), O_RDONLY);
++            if (impl_->fd >= 0) {
++#ifdef POSIX_FADV_RANDOM
++                (void) posix_fadvise(impl_->fd, 0, 0, POSIX_FADV_RANDOM);   // random 4 KiB reads: no readahead
++#endif
++                std::fprintf(stderr, "strata: DirectFile: %s does not support O_DIRECT (%s); reading it through the page "
++                                     "cache instead\n", path.c_str(), std::strerror(e));
++            }
++        }
++        if (impl_->fd < 0) {
++            err = "DirectFile: cannot open " + path + " (" + std::strerror(retried ? errno : e) + ")";
++            return false;
++        }
++    }
+     struct stat st;
+     if (fstat(impl_->fd, &st) != 0) { err = "DirectFile: cannot size " + path; close(); return false; }
+     impl_->size = (uint64_t) st.st_size;
+diff --git a/tools/test_hip_archs.py b/tools/test_hip_archs.py
+index beca87f..69aaed2 100644
+--- a/tools/test_hip_archs.py
++++ b/tools/test_hip_archs.py
+@@ -29,6 +29,12 @@ class HipArchitectureTests(unittest.TestCase):
+         self.assertIn("compiler=gfx1100;gfx1201;gfx1151;runtime=gfx1100,gfx1201,gfx1151", r.stdout)
+         self.assertIn("not validated", r.stderr)
+ 
++    def test_strix_point_builds_with_a_warning(self):
++        r = self.probe("gfx1150")
++        self.assertEqual(r.returncode, 0, r.stderr)
++        self.assertIn("compiler=gfx1150;runtime=gfx1150", r.stdout)
++        self.assertIn("not validated", r.stderr)
++
+     def test_spaces_suffixes_and_duplicates(self):
+         r = self.probe("gfx1100:xnack-  gfx1201;gfx1201;gfx1151")
+         self.assertEqual(r.returncode, 0, r.stderr)
+diff --git a/tools/test_maya_hip.py b/tools/test_maya_hip.py
+index 8008edd..9ff7c83 100644
+--- a/tools/test_maya_hip.py
++++ b/tools/test_maya_hip.py
+@@ -53,6 +53,16 @@ class HipSetupTests(unittest.TestCase):
+         self.assertEqual(pc["gpus"], [self.gpus[1]])
+         self.assertEqual(maya.EXE, self.root / "build-hip/strata")
+ 
++    def test_strix_point_igpu_is_accepted_experimentally(self):
++        self.gpus.append({"index": 3, "arch": "gfx1150", "vendor": "amd", "name": "Radeon 890M", "vram_gb": 0.5})
++        self.assertIn("gfx1150", maya.S.AMD_ARCHS)
++        self.assertIsNone(maya.S.amd_problem(self.gpus[3]))
++        self.assertIsNotNone(maya.S.amd_problem(self.gpus[2]))      # gfx1036 and other iGPUs stay unsupported
++        self.a.gpu = 3
++        pc = maya.check_pc(self.a)
++        self.assertEqual(pc["gpus"], [self.gpus[3]])
++        self.assertIn("gfx1150", pc["archs"])
++
+     def test_rejects_unsupported_card_and_bad_gpu_lists(self):
+         self.a.gpu = 2
+         with self.assertRaises(SystemExit):
+@@ -118,7 +128,7 @@ class HipSetupTests(unittest.TestCase):
+         self.assertIn("-DSTRATA_ENABLE_HIP=ON", conf)
+         self.assertIn("-DSTRATA_ENABLE_CUDA=OFF", conf)
+         self.assertIn("-DSTRATA_PREFILL_MMQ=ON", conf)
+-        self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx1100;gfx1201;gfx1151", conf)
++        self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx1100;gfx1201;gfx1151;gfx1150", conf)
+         self.assertEqual(env["ROCM_PATH"], str(self.rocm))
+         self.assertEqual(meta["backend"], "hip")
+ 
