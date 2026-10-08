@@ -7,6 +7,13 @@ OS Optimizations part(96GB> systems only):
 
 sudo nano /etc/default/grub
 #at the end of the file add:
+#TTM limit	Pages	Recommendation
+#72 GiB	18,874,368	Conservative
+#80 GiB	20,971,520	Recommended starting point
+#86 GiB	22,544,384	Aggressive
+#90 GiB	23,592,960	Very aggressive
+#92 GiB	24,117,248	I wouldn't start here
+
 #For 32k context it must be 0.3GB more
 GRUB_CMDLINE_LINUX_DEFAULT="quiet ttm.pages_limit=19486528"
 
