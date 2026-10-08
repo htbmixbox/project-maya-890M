@@ -1,31 +1,45 @@
-///Optimized for 890M build only :)
-1.added 890M support 
+# 🚀 Optimized for 890M Build Only :)
 
-OS Optimizations part(96GB> systems only):
-1.Create SWAP on fastest part of your SSD with the same size as your RAM.
-2.On 96 GB system you have to fine tune your GPU/CPU mem sharing by doing this:
+## What's New
 
+* Added **890M support**.
+
+---
+
+# 🛠️ OS Optimizations
+
+> **For systems with 96 GB+ RAM only.**
+
+These optimizations are focused on maximizing GPU/CPU memory sharing and keeping the LLM workload from unnecessarily falling back to SWAP.
+
+## 1. Create SWAP
+
+Create a **SWAP file/partition on the fastest part of your SSD**.
+
+As a general rule, make the SWAP size approximately **the same size as your system RAM**.
+
+> ⚠️ Make sure the SSD has sufficient free space before doing this.
+
+---
+
+## 2. Fine-Tune GPU / CPU Memory Sharing
+
+On a **96 GB RAM system**, you can tune the Linux **TTM memory limit** to control how much memory can be used for GPU memory management.
+
+Edit GRUB:
+
+```bash
 sudo nano /etc/default/grub
-#at the end of the file add:
-#TTM limit	Pages	Recommendation
-#72 GiB	18,874,368	Conservative
-#80 GiB	20,971,520	Recommended starting point
-#86 GiB	22,544,384	Aggressive
-#90 GiB	23,592,960	Very aggressive
-#92 GiB	24,117,248	I wouldn't start here
+```
 
-#For 32k context it must be 0.3GB more
-GRUB_CMDLINE_LINUX_DEFAULT="quiet ttm.pages_limit=19486528"
+At the end of the file, adjust:
 
-#after edit 
-sudo update-grub
-reboot
+|  TTM Limit |          Pages | Recommendation               |
+| ---------: | -------------: | ---------------------------- |
+|     72 GiB |     18,874,368 | Conservative                 |
+| **80 GiB** | **20,971,520** | ⭐ Recommended starting point |
+|     86 GiB |     22,544,384 | Very Aggressive                   |
 
-
-
-You don't want to evict experts to SWAP - it degrades performance by 2 t/s and wears out your SSD. In the long run it's gonna be expensive :) !
-
-Steps from above took me from 3 t/s to 5t/s
 
 
 
