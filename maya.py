@@ -449,7 +449,22 @@ DS4_EXL3 = {"exl3": {"bits": "2.9", "manifest": DS4_MANIFEST, "weights_gb": 211,
             "exl3-3.5": {"bits": "3.5", "manifest": ROOT / "tools" / "ds4" / "download-3.5bpw.json", "weights_gb": 258,
                          "memory_gb": 280, "dir": DS4_35}}
 FAMILIES = ("glm", "deepseek")
+# Recursive Flint (40B-A2.5B MoE for coding agents), unsloth's Dynamic GGUFs.  Needs the Flint engine path
+# (include/strata/core/flint_model.hpp); the installer downloads these, the engine step is gated until that lands.
+FLINT_REPO = "unsloth/flint-GGUF"
+FLINT_QUANTS = (  # (name, file stem, GB, bits)
+    ("UD-IQ1_M", 11.4, 1), ("UD-IQ2_XXS", 11.9, 2), ("UD-Q2_K_XL", 13.6, 2), ("UD-IQ3_XXS", 14.5, 3),
+    ("UD-Q3_K_XL", 18.5, 3), ("UD-Q4_K_XL", 25.1, 4), ("UD-Q5_K_XL", 29.9, 5), ("UD-Q6_K_XL", 36.3, 6),
+    ("Q8_0", 42.3, 8), ("BF16", 79.6, 16))
+for _q, _gb, _bits in FLINT_QUANTS:
+    MODELS[f"Flint-{_q}"] = {
+        "family": "flint",
+        "about": f"Recursive Flint ({_bits}-bit class), unsloth Dynamic GGUF; 39.8B MoE, ~2.5B active, coding agent",
+        "repo": FLINT_REPO, "revision": "main", "folder": "BF16" if _q == "BF16" else "",
+        "file": "flint-preview-BF16-{i:05d}-of-{n:05d}.gguf" if _q == "BF16" else f"flint-preview-{_q}.gguf",
+        "shards": 3 if _q == "BF16" else 1, "download_gb": _gb, "sha256": {}}
 SHARD_RE = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$")
+FLINT_ARCHS = ("flint",)
 GLM_ARCHS = ("glm5-next", "glm5next")             # llama.cpp's spelling and unsloth's
 # the expert profile setup passes to every GLM config (tools/make_profile.py --glm):
 # its ranking of every (layer, expert) pair decides each layer's VRAM slots and which experts start there
@@ -1698,7 +1713,7 @@ def glm_files(d: Path) -> list:
         if m and int(m.group(1)) != 1:
             continue
         arch, n = gguf_head(f)
-        if arch in GLM_ARCHS and (n > 0 or m):
+        if arch in GLM_ARCHS + FLINT_ARCHS and (n > 0 or m):
             found.append(f)
     return found
 
@@ -1709,7 +1724,7 @@ def local_first(p: Path) -> tuple:
     if p.is_file():
         first = shard_set(p)[0]
         arch = gguf_head(first)[0] if first.exists() else ""
-        if first.exists() and arch not in GLM_ARCHS:
+        if first.exists() and arch not in GLM_ARCHS + FLINT_ARCHS:
             return None, f"{first.name} is " + (f"a {arch!r} model, not GLM-5.3-Flash ({GLM_ARCHS[0]})" if arch else
                                                 "not a GGUF file")
         return first, None
@@ -1757,7 +1772,7 @@ def quant_of(first: Path) -> str:
             continue
         if first.name in [names[0] for names in [shard_names(mm)] + old_names(mm)]:
             return q
-    m = re.match(r"GLM-5\.3-Flash-(.+?)(-\d{5}-of-\d{5})?\.gguf$", first.name, re.I)
+    m = re.match(r"(?:GLM-5\.3-Flash|flint-preview)-(.+?)(-\d{5}-of-\d{5})?\.gguf$", first.name, re.I)
     return m.group(1) if m else first.parent.name
 
 
@@ -1956,6 +1971,10 @@ def model_step(a, models: Path, choice: tuple):
         arch = str(GGUFFile(shards[0]).metadata.get("general.architecture", ""))
         if arch not in GLM_ARCHS:
             fail(f"{shards[0].name} is a {arch!r} model, not GLM-5.3-Flash (glm5-next)")
+        if arch in FLINT_ARCHS:
+                ok(f"{quant}: Flint files present ({sum(s.stat().st_size for s in shards) / 1e9:.1f} GB in {d})")
+                fail("Flint downloads fine, but the engine's Flint path is not built into this tree yet",
+                     "see docs/FLINT.md (include/strata/core/flint_model.hpp lists what is still to fill in)")
     gb = sum(s.stat().st_size for s in shards) / 1e9
     ok(f"{quant}: {len(shards)} file(s), {gb:.1f} GB in {d}")
     if rotational(d):
